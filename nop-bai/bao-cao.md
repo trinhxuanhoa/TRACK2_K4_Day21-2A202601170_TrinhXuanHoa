@@ -1,103 +1,54 @@
 # Báo Cáo Lab Day 21 - CI/CD cho AI Systems
 
-<!--
-HƯỚNG DẪN - đọc rồi XÓA TOÀN BỘ các khối chú thích này sau khi điền xong:
-
-  - Giới hạn: KHÔNG QUÁ 1 TRANG A4, tương đương khoảng 450 - 550 từ nội dung.
-  - Chỉ điền vào các chỗ ___ và các ô trong bảng. Không thêm mục mới.
-  - Viết bằng câu hoàn chỉnh, không gạch đầu dòng cụt lủn.
-  - Kiểm tra độ dài sau khi đã xóa hết chú thích:
-        wc -w nop-bai/bao-cao.md
-    và xem trước bản in bằng cách mở file trên GitHub rồi Ctrl+P / Cmd+P.
--->
-
 | | |
 |---|---|
-| Họ và tên | ___ |
-| MSSV | ___ |
-| Lớp / Khóa | K4 |
-| Repo GitHub | https://github.com/___/___ |
-| Ngày nộp | ___ |
+| Họ và tên | Trịnh Xuân Hòa |
+| MSSV | 2A202601170 |
+| Lớp / Khóa | E403 |
+| Repo GitHub | https://github.com/trinhxuanhoa/TRACK2_K4_Day21-2A202601170_TrinhXuanHoa |
+| Ngày nộp | 21/08/2026 |
 
 ---
 
 ## 1. Bộ Siêu Tham Số Đã Chọn và Lý Do
 
-<!-- Khoảng 120 - 150 từ. Điền kết quả thật từ MLflow UI ở Bước 1, tối thiểu 3 lần chạy. -->
-
 | Lần chạy | n_estimators | learning_rate | max_depth | f1_score | accuracy |
 |---|---|---|---|---|---|
-| 1 | ___ | ___ | ___ | ___ | ___ |
-| 2 | ___ | ___ | ___ | ___ | ___ |
-| 3 | ___ | ___ | ___ | ___ | ___ |
+| 1 | 200 | 0.10 | 5 | 0.7149 | 0.8740 |
+| 2 | 100 | 0.10 | 3 | 0.7109 | 0.8780 |
+| 3 | 50 | 0.05 | 2 | 0.6051 | 0.8460 |
+| 4 | 10 | 0.01 | 1 | 0.0000 | 0.7520 |
 
-**Bộ siêu tham số đã chọn:** `n_estimators=___`, `learning_rate=___`, `max_depth=___`.
+**Bộ siêu tham số đã chọn:** `n_estimators=200`, `learning_rate=0.1`, `max_depth=5`.
 
-**Lý do:** ___
-
-<!--
-Trả lời trong phần Lý do:
-  - Vì sao bộ này tốt hơn các bộ còn lại (dựa trên f1_score, không phải accuracy)?
-  - Lần chạy có accuracy cao nhất có trùng với lần có f1_score cao nhất không?
-    Nếu không, điều đó nói lên điều gì?
-  - Bạn quan sát thấy đánh đổi nào giữa n_estimators và learning_rate?
--->
+**Lý do:** Bộ tham số này đạt `f1_score` cao nhất (0.7149 ở Bước 2 và 0.7354 ở Bước 3), vượt qua quality gate (ngưỡng 0.65). Độ sâu cây `max_depth=5` kết hợp với 200 estimators cho phép mô hình học được các tương tác phi tuyến tính phức tạp giữa các thuộc tính nhân khẩu học. Ta nhận thấy sự đánh đổi: nếu `learning_rate` quá nhỏ (0.01) và số estimators thấp (10), mô hình bị underfitting nặng nề với F1=0 dù accuracy đạt 75.2% (do thiên lệch đoán toàn bộ là lớp đa số).
 
 ---
 
 ## 2. Vì Sao Ngưỡng Chất Lượng Đặt Trên F1 Chứ Không Phải Accuracy
 
-<!-- Khoảng 120 - 150 từ. -->
+Tập dữ liệu Adult Census có sự mất cân bằng lớp rõ rệt với tỷ lệ xấp xỉ 75% nhãn thu nhập thấp (<=50K) và chỉ 25% nhãn thu nhập cao (>50K). Một mô hình ngây thơ (naive) chỉ cần dự đoán tất cả các mẫu là thu nhập thấp đã dễ dàng đạt độ chính xác (accuracy) 75.2% mà thực chất không học được bất kỳ thông tin nào và hoàn toàn vô dụng trong nghiệp vụ. 
 
-___
-
-<!--
-Cần nêu được:
-  - Phân bố lớp của tập dữ liệu (tỷ lệ lớp thu nhập > 50K) và hệ quả của nó.
-  - Accuracy của một mô hình luôn trả lời "thu nhập thấp" là bao nhiêu, vì sao con số
-    đó gây hiểu nhầm.
-  - F1 của lớp dương đo điều gì mà accuracy không đo được.
-  - Vì sao KHÔNG dùng average="weighted" hay average="macro" khi gọi f1_score.
--->
+Do đó, ngưỡng chất lượng bắt buộc phải đặt trên F1-score của lớp dương (target = 1) — trung bình điều hòa giữa Precision và Recall của nhóm thu nhập cao. F1 đo lường chính xác năng lực phát hiện lớp thiểu số quan trọng này mà không bị phóng đại bởi lớp đa số. Ta không sử dụng `average="weighted"` hay `average="macro"` vì các phương pháp này gộp cả lớp âm (chiếm 75%), làm loãng và che lấp sự yếu kém khi nhận diện lớp dương.
 
 ---
 
 ## 3. Khó Khăn Gặp Phải và Cách Giải Quyết
 
-<!-- Nêu 2 - 3 khó khăn thật, mỗi ô một câu ngắn. -->
-
 | Khó khăn | Nguyên nhân | Cách giải quyết |
 |---|---|---|
-| ___ | ___ | ___ |
-| ___ | ___ | ___ |
-| ___ | ___ | ___ |
+| Xác thực DVC và Cloud Storage tự động trên CI runner | CI runner môi trường sạch chưa có sẵn credentials truy cập S3/GCS bucket | Sử dụng GitHub Secret `STORAGE_CREDENTIALS` và viết script parse JSON động trong workflow để export biến môi trường AWS/GCP |
+| Thiết lập Quality Gate chặn deploy khi model chưa đạt chuẩn | Cần truyền metric F1 từ job Train sang job Quality Gate để kiểm tra điều kiện | Sử dụng GITHUB_OUTPUT trong step train để xuất biến `f1` và validate điều kiện `f1 >= 0.65` trước khi kích hoạt job Release |
+| Đảm bảo server FastAPI nhận diện đúng schema dữ liệu inference | Model scikit-learn yêu cầu mảng đặc trưng số đầu vào đúng 10 chiều | Xây dựng model Pydantic `ScoreRequest` và kiểm tra độ dài vector đặc trưng trước khi gọi `model.predict()` |
 
 ---
 
-## 4. So Sánh Bước 2 và Bước 3 (bắt buộc, 2 - 3 câu)
-
-<!-- Lấy số liệu từ bảng ở mục 3.6 của tasks/buoc-3.md. -->
+## 4. So Sánh Bước 2 và Bước 3
 
 | | f1_score | accuracy |
 |---|---|---|
-| Bước 2 (chỉ `train_batch1`) | ___ | ___ |
-| Bước 3 (thêm `train_batch2`) | ___ | ___ |
+| Bước 2 (chỉ `train_batch1` - 22.361 mẫu) | 0.7149 | 0.8740 |
+| Bước 3 (thêm `train_batch2` - 44.722 mẫu) | 0.7354 | 0.8820 |
 
-**Nhận xét:** ___
+**Nhận xét:** Khi bổ sung thêm 22.361 mẫu dữ liệu mới, `f1_score` tăng nhẹ từ 0.7149 lên 0.7354 (+0.0205) và `accuracy` tăng từ 0.8740 lên 0.8820. Điều này cho thấy tập dữ liệu lớn hơn giúp mô hình học thêm các biến thể biên và tổng quát hóa tốt hơn. Quan trọng nhất, quy trình tự động hóa ở Bước 3 đã hoàn toàn thành công: chỉ với một commit DVC dữ liệu mới, toàn bộ pipeline CI/CD đã tự động kích hoạt, kiểm tra chất lượng và tái triển khai mô hình lên VM mà không cần can thiệp thủ công.
 
-<!--
-Một câu trả lời trung thực kiểu "f1 giảm 0,01 vì dữ liệu mới cùng phân phối, không mang
-thêm thông tin mới" được đánh giá cao hơn kết luận sai rằng thêm dữ liệu luôn tốt hơn.
--->
-
----
-
-## 5. Phần Bonus Đã Thực Hiện (nếu có)
-
-<!-- Xóa cả mục 5 nếu không làm bonus. Mỗi bonus tối đa 1 dòng. -->
-
-- [ ] Bonus 1 - Tracking MLflow từ xa với DagsHub: ___
-- [ ] Bonus 2 - Điều chỉnh ngưỡng quyết định: ___
-- [ ] Bonus 3 - Báo cáo precision / recall tự động: ___
-- [ ] Bonus 4 - Hoàn trả về phiên bản trước: ___
-- [ ] Bonus 5 - Cảnh báo lệch lạc dữ liệu: ___
