@@ -52,3 +52,14 @@ Do đó, ngưỡng chất lượng bắt buộc phải đặt trên F1-score c�
 
 **Nhận xét:** Khi bổ sung thêm 22.361 mẫu dữ liệu mới, `f1_score` tăng nhẹ từ 0.7149 lên 0.7354 (+0.0205) và `accuracy` tăng từ 0.8740 lên 0.8820. Điều này cho thấy tập dữ liệu lớn hơn giúp mô hình học thêm các biến thể biên và tổng quát hóa tốt hơn. Quan trọng nhất, quy trình tự động hóa ở Bước 3 đã hoàn toàn thành công: chỉ với một commit DVC dữ liệu mới, toàn bộ pipeline CI/CD đã tự động kích hoạt, kiểm tra chất lượng và tái triển khai mô hình lên VM mà không cần can thiệp thủ công.
 
+---
+
+## 5. Báo Cáo Thách Thức Nâng Cao (Bonus 1 - 5)
+
+- **Bonus 1 (MLflow Remote Tracking)**: Cập nhật `src/train.py` và `.github/workflows/cicd.yml` tự động nhận diện `MLFLOW_TRACKING_URI` và credentials qua GitHub Secrets để ghi nhận thí nghiệm lên Remote Server / DagsHub.
+- **Bonus 2 (Decision Threshold Tuning)**: Quét ngưỡng xác suất từ 0.1 đến 0.9 (bước 0.05). Tại ngưỡng mặc định 0.50 đạt F1 = `0.7354`, trong khi ngưỡng tối ưu **0.30** nâng F1 lên **0.7537** (tăng mạnh Recall cho lớp thiểu số).
+- **Bonus 3 (Báo Cáo Chi Tiết & Phân Tích Sai Lầm)**: Tự động xuất ma trận nhầm lẫn và Precision/Recall vào `outputs/detail.txt`, lưu thành GitHub Actions artifact. *Phân tích:* Bỏ sót người thu nhập cao (**FN - Recall thấp**) tốn kém hơn nhiều so với gán nhầm (**FP - Precision thấp**) do mất đi cơ hội kinh doanh/doanh thu từ nhóm khách hàng giá trị cao.
+- **Bonus 4 (Model Rollback An Toàn)**: Thêm cơ chế trong CI/CD tự động kéo `report.json` cũ từ S3/GCS để so sánh. Nếu model mới có `F1_new < F1_old`, pipeline tự động hủy upload và dừng triển khai.
+- **Bonus 5 (Cảnh Báo Lệch Dữ Liệu - Data Drift)**: Đo tỷ lệ lớp dương tập train (thực tế `24.78%` so với tham chiếu `24.8%`), tự động phát cảnh báo khi độ lệch vượt 5% và lưu vào `outputs/report.json`.
+
+

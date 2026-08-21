@@ -83,6 +83,10 @@ jobs:
         run: dvc pull data/train_batch1.csv.dvc data/holdout.csv.dvc
 
       - name: Train model
+        env:
+          MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
+          MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
+          MLFLOW_TRACKING_PASSWORD: ${{ secrets.MLFLOW_TRACKING_PASSWORD }}
         run: python src/train.py
 
       - name: Read report
@@ -91,35 +95,85 @@ jobs:
           F1=$(python -c "import json; d=json.load(open('outputs/report.json')); print(d['f1_score'])")
           echo "f1=$F1" >> $GITHUB_OUTPUT
 
-      - name: Upload model to Cloud Storage
+      - name: Upload model to Cloud Storage (with Rollback Safety Check - Bonus 4)
         env:
           ARTIFACT_BUCKET: ${{ secrets.ARTIFACT_BUCKET }}
         run: |
           python - <<'PYEOF'
-          import os
+          import os, json
           bucket = os.environ["ARTIFACT_BUCKET"]
           model_path = "models/model.joblib"
-          key = "artifacts/current/model.joblib"
+          report_path = "outputs/report.json"
+          detail_path = "outputs/detail.txt"
+          model_key = "artifacts/current/model.joblib"
+          report_key = "artifacts/current/report.json"
+          detail_key = "artifacts/current/detail.txt"
+
+          with open(report_path) as f:
+              new_report = json.load(f)
+          f1_new = float(new_report.get("f1_score", 0.0))
+
+          f1_old = None
 
           if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
               from google.cloud import storage
               client = storage.Client()
               b = client.bucket(bucket)
-              blob = b.blob(key)
-              blob.upload_from_filename(model_path)
-              print(f"Uploaded {model_path} to gs://{bucket}/{key}")
+              old_blob = b.blob(report_key)
+              if old_blob.exists():
+                  try:
+                      old_data = json.loads(old_blob.download_as_text())
+                      f1_old = float(old_data.get("f1_score", 0.0))
+                  except Exception as e:
+                      print(f"Khong the doc report cu: {e}")
+
+              if f1_old is not None:
+                  print(f"[Bonus 4] So sanh F1: Model moi ({f1_new:.4f}) vs Model cu ({f1_old:.4f})")
+                  if f1_new < f1_old:
+                      raise SystemExit(f"ROLLBACK TRIGGERED: Model moi F1 ({f1_new:.4f}) < Model cu ({f1_old:.4f}). Huy upload!")
+              else:
+                  print(f"[Bonus 4] Chua co model cu tren cloud storage. Chap nhan model moi voi F1 = {f1_new:.4f}")
+
+              b.blob(model_key).upload_from_filename(model_path)
+              b.blob(report_key).upload_from_filename(report_path)
+              if os.path.exists(detail_path):
+                  b.blob(detail_key).upload_from_filename(detail_path)
+              print(f"Uploaded model & reports to gs://{bucket}/artifacts/current/")
           else:
               import boto3
+              from botocore.exceptions import ClientError
               s3 = boto3.client("s3")
-              s3.upload_file(model_path, bucket, key)
-              print(f"Uploaded {model_path} to s3://{bucket}/{key}")
+              try:
+                  res = s3.get_object(Bucket=bucket, Key=report_key)
+                  old_data = json.loads(res['Body'].read().decode('utf-8'))
+                  f1_old = float(old_data.get("f1_score", 0.0))
+              except ClientError as e:
+                  if e.response['Error']['Code'] != 'NoSuchKey':
+                      print(f"Loi doc report S3: {e}")
+              except Exception as e:
+                  print(f"Khong the doc report cu: {e}")
+
+              if f1_old is not None:
+                  print(f"[Bonus 4] So sanh F1: Model moi ({f1_new:.4f}) vs Model cu ({f1_old:.4f})")
+                  if f1_new < f1_old:
+                      raise SystemExit(f"ROLLBACK TRIGGERED: Model moi F1 ({f1_new:.4f}) < Model cu ({f1_old:.4f}). Huy upload!")
+              else:
+                  print(f"[Bonus 4] Chua co model cu tren S3. Chap nhan model moi voi F1 = {f1_new:.4f}")
+
+              s3.upload_file(model_path, bucket, model_key)
+              s3.upload_file(report_path, bucket, report_key)
+              if os.path.exists(detail_path):
+                  s3.upload_file(detail_path, bucket, detail_key)
+              print(f"Uploaded model & reports to s3://{bucket}/artifacts/current/")
           PYEOF
 
-      - name: Save report as artifact
+      - name: Save report and detail artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: report
-          path: outputs/report.json
+          name: evaluation-reports
+          path: |
+            outputs/report.json
+            outputs/detail.txt
 
 
   # ---------------------------------------------------------------------------
